@@ -40,15 +40,16 @@ import { RecoveryTimeline, defaultRecoveryEvents } from "@/components/ui/Recover
 import { mockIncidents, mockAgents } from "@/lib/mockData";
 import { cn } from "@/lib/utils";
 
-// Visual 7-Stage Recovery Lifecycle Pipeline
+// Visual 8-Stage Recovery Lifecycle Pipeline
 const RECOVERY_STAGES = [
   { id: "detected", label: "Incident Detected", timestamp: "07:38:02 UTC", icon: AlertTriangle },
   { id: "diagnosing", label: "Diagnosing", timestamp: "07:38:18 UTC", icon: Cpu },
-  { id: "evidence", label: "Evidence", timestamp: "07:39:10 UTC", icon: Search },
-  { id: "diagnosis", label: "Diagnosis", timestamp: "07:39:45 UTC", icon: Activity },
-  { id: "remediation", label: "Remediation", timestamp: "07:42:00 UTC", icon: Zap },
-  { id: "verification", label: "Verification", timestamp: "07:44:10 UTC", icon: CheckCircle2 },
-  { id: "resolved", label: "Resolved", timestamp: "07:46:00 UTC", icon: ShieldCheck },
+  { id: "remediation_1", label: "1st Remediation", timestamp: "07:39:30 UTC", icon: RotateCcw },
+  { id: "verification_failed", label: "Verification Failed ⚠️", timestamp: "07:40:15 UTC", icon: AlertTriangle },
+  { id: "re_diagnosis", label: "Re-Diagnosis", timestamp: "07:41:00 UTC", icon: Activity },
+  { id: "remediation_2", label: "2nd Remediation", timestamp: "07:42:00 UTC", icon: Zap },
+  { id: "verification_passed", label: "Verification Passed ✓", timestamp: "07:44:30 UTC", icon: CheckCircle2 },
+  { id: "resolved", label: "Resolved", timestamp: "07:45:00 UTC", icon: ShieldCheck },
 ];
 
 export default function IncidentDetailsPage() {
@@ -59,7 +60,7 @@ export default function IncidentDetailsPage() {
     mockIncidents.find((i) => i.id === incidentId) || mockIncidents[0];
 
   const [incident, setIncident] = useState(initialIncident);
-  const [currentStageIndex, setCurrentStageIndex] = useState(4); // At Remediation stage
+  const [currentStageIndex, setCurrentStageIndex] = useState(5); // At 2nd Remediation (Rollback approval) stage
   const [isApproveModalOpen, setIsApproveModalOpen] = useState(false);
   const [isPostMortemModalOpen, setIsPostMortemModalOpen] = useState(false);
   const [verificationPassed, setVerificationPassed] = useState(false);
@@ -68,20 +69,26 @@ export default function IncidentDetailsPage() {
   >([
     {
       sender: "System Supervisor",
-      text: `War room initialized for incident ${incident.id}. Assigned lead: TITAN-ALPHA (Sentinel-SRE).`,
+      text: `War room initialized for incident ${incident.id}. Assigned lead: Diagnostic Agent & Remediation Agent.`,
       time: "07:38 UTC",
       isAgent: false,
     },
     {
-      sender: "Sentinel-SRE",
-      text: "RCA isolated root cause to commit 9bf2ad4. Ingress Envoy upstream connection timeout set too low (250ms). I have prepared an automated Helm canary rollback to v3.8.1.",
-      time: "07:39 UTC",
+      sender: "Diagnostic Agent",
+      text: "Initial triage completed. First attempt restarted container pods, but Verification Agent detected 12.4% error rate persisting.",
+      time: "07:40 UTC",
       isAgent: true,
     },
     {
-      sender: "Aegis-SecOps",
-      text: "eBPF trace correlation confirms zero malicious external packet flooding. Root cause is 100% internal configuration regression.",
+      sender: "Diagnostic Agent",
+      text: "RE-DIAGNOSIS COMPLETE: Root cause isolated to commit 9bf2ad4 (gRPC keepalive timeout reduced to 250ms). Proposing Helm canary rollback to v3.8.1.",
       time: "07:41 UTC",
+      isAgent: true,
+    },
+    {
+      sender: "Remediation Agent",
+      text: "Safety checks passed (Revision integrity verified). Awaiting Commander approval for APP-401 rollback to execute.",
+      time: "07:42 UTC",
       isAgent: true,
     },
   ]);
@@ -97,13 +104,13 @@ export default function IncidentDetailsPage() {
       ...prev,
       status: "mitigating",
       mitigationSteps: prev.mitigationSteps.map((st) =>
-        st.id === "step-2"
+        st.id === "step-5"
           ? {
               ...st,
               status: "completed" as const,
-              executedAt: "07:43:10 UTC",
+              executedAt: "07:43:00 UTC",
             }
-          : st.id === "step-3"
+          : st.id === "step-6"
           ? {
               ...st,
               status: "running" as const,
@@ -114,17 +121,17 @@ export default function IncidentDetailsPage() {
         ...prev.logs,
         {
           id: `log-${Date.now()}`,
-          timestamp: "07:43:10",
+          timestamp: "07:43:00",
           level: "AGENT",
-          source: "Sentinel-SRE",
-          message: "Approval APP-401 verified. Executed Helm rollback to v3.8.1. Envoy pods rolling 12/12.",
+          source: "Remediation Agent",
+          message: "Approval APP-401 verified by Commander. Applied Helm rollback to v3.8.1 in 1.4s.",
         },
       ],
     }));
 
-    setCurrentStageIndex(5); // Progress to Verification stage
+    setCurrentStageIndex(6); // Progress to Verification Passed stage
     setIsApproveModalOpen(false);
-    setActionSuccessNotice("Helm Rollback executed. Verification suite initiated.");
+    setActionSuccessNotice("Canary Rollback to v3.8.1 executed. Verification suite validating SLOs...");
     setTimeout(() => setActionSuccessNotice(null), 5000);
 
     // Add chat interaction
@@ -132,13 +139,13 @@ export default function IncidentDetailsPage() {
       ...prev,
       {
         sender: "Commander (You)",
-        text: "Approval granted. Dispatched Helm rollback to v3.8.1 across production namespace.",
+        text: "Approval granted. Dispatched Helm rollback to v3.8.1 across production cluster.",
         time: "Just now",
         isAgent: false,
       },
       {
-        sender: "Sentinel-SRE",
-        text: "Rollback completed in 1.4s. Ingress pods healthy (12/12). Error rate dropped from 14.8% to 0.04%. Initiating verification suite...",
+        sender: "Remediation Agent",
+        text: "Rollback completed in 1.4s. Ingress pods rolling update complete. Error rate dropping to 0.02%. Handing off to Verification Agent...",
         time: "Just now",
         isAgent: true,
       },
@@ -147,7 +154,7 @@ export default function IncidentDetailsPage() {
     // Simulate verification pass after 2 seconds
     setTimeout(() => {
       setVerificationPassed(true);
-      setCurrentStageIndex(6); // Resolved
+      setCurrentStageIndex(7); // Resolved stage
       setIncident((prev) => ({
         ...prev,
         status: "resolved",
@@ -156,6 +163,16 @@ export default function IncidentDetailsPage() {
           status: "completed" as const,
         })),
       }));
+
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          sender: "Verification Agent",
+          text: "VERIFICATION PASSED: Synthetic health checks 100% OK. P99 latency: 24ms, error rate: 0.02%. Incident INC-8921 auto-resolved in 6m 58s.",
+          time: "Just now",
+          isAgent: true,
+        },
+      ]);
     }, 2500);
   };
 
@@ -339,7 +356,7 @@ export default function IncidentDetailsPage() {
         </div>
 
         {/* Stepper Track */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
           {RECOVERY_STAGES.map((stage, idx) => {
             const isCompleted = idx < currentStageIndex;
             const isCurrent = idx === currentStageIndex;
