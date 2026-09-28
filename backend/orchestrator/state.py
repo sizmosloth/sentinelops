@@ -39,7 +39,7 @@ class IncidentStateMachine:
     def subscribe(self, callback: Callable[[AgentEvent], None]) -> None:
         self._subscribers.append(callback)
 
-    def transition_to(self, new_status: IncidentStatus) -> IncidentStatus:
+    def transition_to(self, new_status: IncidentStatus, reason: str | None = None) -> IncidentStatus:
         is_escalation = new_status == IncidentStatus.ESCALATED
         can_escalate = self._status not in (IncidentStatus.RESOLVED, IncidentStatus.ESCALATED)
         
@@ -59,11 +59,15 @@ class IncidentStateMachine:
         else:
             agent_state = AgentState.RUNNING
 
+        message = f"{old_status.value} -> {new_status.value}"
+        if reason:
+            message += f": {reason}"
+
         event = AgentEvent(
             incident_id=self._incident_id,
             agent="orchestrator",
             state=agent_state,
-            message=f"{old_status.value} -> {new_status.value}"
+            message=message
         )
 
         for callback in self._subscribers:

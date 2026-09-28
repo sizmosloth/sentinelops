@@ -70,6 +70,10 @@ def main():
                         print("[VERIFICATION] API health: PASSED")
                     else:
                         print("[VERIFICATION] API health: FAILED")
+                    record_idx += 1
+                    break
+                else:
+                    break
                 record_idx += 1
 
     print("==================================")

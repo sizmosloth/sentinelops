@@ -68,6 +68,10 @@ def print_history(events, executor, incident):
                         print("[VERIFICATION] API health: PASSED")
                     else:
                         print("[VERIFICATION] API health: FAILED")
+                    record_idx += 1
+                    break
+                else:
+                    break
                 record_idx += 1
                 
         elif e.agent == "orchestrator" and "FAILED -> RE_DIAGNOSING" in e.message:
