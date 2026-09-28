@@ -1,0 +1,30 @@
+services:
+
+  demo-db:
+    build:
+      context: ./database
+    container_name: demo-db
+    environment:
+      POSTGRES_DB: sentinelops
+      POSTGRES_USER: sentinel
+      POSTGRES_PASSWORD: sentinel
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sentinel -d sentinelops"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  demo-api:
+    build:
+      context: ./api
+    container_name: demo-api
+    environment:
+      DB_HOST: demo-db
+      DB_NAME: sentinelops
+      DB_USER: sentinel
+      DB_PASSWORD: sentinel
+    ports:
+      - "8000:8000"
+    depends_on:
+      demo-db:
+        condition: service_healthy
