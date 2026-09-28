@@ -4,8 +4,12 @@ from backend.safety.policies import get_decision
 
 ALLOWED_TOOLS = {
     "container_status",
+    "container_health",
     "restart_container",
-    "health_check"
+    "health_check",
+    "port_check",
+    "http_check",
+    "database_health"
 }
 
 ALLOWED_CONTAINERS = {
@@ -22,13 +26,14 @@ def check_action(tool, target=None):
             "reason": "Tool is not allowed"
         }
 
-    if tool in {"container_status", "restart_container"}:
+    if tool in {"container_status", "container_health", "restart_container"}:
         if target not in ALLOWED_CONTAINERS:
             return {
                 "allowed": False,
                 "decision": "deny",
                 "reason": "Target container is not allowed"
             }
+
 
     risk = get_risk(tool)
     policy = get_decision(tool)

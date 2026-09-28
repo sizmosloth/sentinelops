@@ -3,7 +3,7 @@ from backend.safety.gate import check_action
 from backend.safety.permissions import request_approval, get_approval
 
 
-def execute_action(tool_name, target=None, reason=""):
+def execute_action(tool_name, target=None, reason="", incident_id=None):
     safety_result = check_action(tool_name, target)
 
     if safety_result["decision"] == "deny":
@@ -18,7 +18,9 @@ def execute_action(tool_name, target=None, reason=""):
         approval = request_approval(
             tool_name,
             target,
-            reason
+            reason,
+            incident_id=incident_id,
+            risk=safety_result.get("risk", "medium")
         )
 
         return {
@@ -28,6 +30,7 @@ def execute_action(tool_name, target=None, reason=""):
             "risk": safety_result["risk"],
             "approval": approval
         }
+
 
     tool = get_tool(tool_name)
 
