@@ -15,10 +15,11 @@ class DefaultSafetyGate(SafetyGate):
         return {"decision": "allow", "reason": ""}
 
 class Orchestrator:
-    def __init__(self, provider: AIProvider, tool_executor: ToolExecutor, safety_gate: SafetyGate = None, max_attempts: int = None):
+    def __init__(self, provider: AIProvider, tool_executor: ToolExecutor, safety_gate: SafetyGate = None, max_attempts: int = None, approval_callback: Callable[[ActionProposal, str], bool] = None):
         self.provider = provider
         self.tool_executor = tool_executor
         self.safety_gate = safety_gate or DefaultSafetyGate()
+        self.approval_callback = approval_callback
         if max_attempts is None:
             self.max_attempts = int(os.environ.get("MAX_ATTEMPTS", "3"))
         else:
@@ -112,18 +113,24 @@ class Orchestrator:
                     decision = decision_dict.get("decision", "allow")
                     reason = decision_dict.get("reason", "")
                     
-                    if decision == "allow":
-                        break
-                    elif decision == "require_approval":
+                    if decision == "require_approval":
                         sm.transition_to(IncidentStatus.WAITING_APPROVAL)
                         sync_state()
+                        if self.approval_callback and not self.approval_callback(proposal, reason):
+                            decision = "deny"
+                            reason = f"Manual approval rejected: {reason}"
+                        else:
+                            decision = "allow"
+                            
+                    if decision == "allow":
                         break
                     elif decision == "deny":
                         denials += 1
                         msg = f"Denied {proposal.tool} on {proposal.target}: {reason}"
                         context["verification_evidence"].append(msg)
                         diagnosis.diagnosis += f"\nSafety check denied {proposal.tool}: {reason}"
-                        if denials >= 3:
+                        failed_actions.append((proposal.tool, proposal.target))
+                        if denials >= self.max_attempts:
                             reason = f"Safety check denied {denials} times"
                             sm.transition_to(IncidentStatus.ESCALATED, reason=reason)
                             sync_state(reason=reason)
