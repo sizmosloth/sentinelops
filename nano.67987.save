@@ -1,8 +1,0 @@
-
-running - sg docker -c "docker compose -f demo/docker-compose.yml up -d"
-
-system health - sg docker -c "docker ps"
-
-failure - sg docker -c "docker stop demo-db"
-
-sentinalops - sg docker -c "python3 -c 'from backend.orchestrator.orchestrator import run_recovery; print(run_recovery())'"
