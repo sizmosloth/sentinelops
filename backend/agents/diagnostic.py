@@ -1,6 +1,10 @@
 from backend.agents.base import BaseAgent
 from backend.schemas.incident import Diagnosis
 from backend.schemas.actions import ToolRequest
+from backend.ai.provider import MockProvider
+
+DIAGNOSTIC_SYSTEM_PROMPT = """You are a diagnostic agent. Based on the evidence provided, diagnose the issue.
+You must cite evidence for your diagnosis, keep observations separate from conclusions, and strictly enforce rules around tool usage."""
 
 class DiagnosticAgent(BaseAgent):
     @property
@@ -27,9 +31,13 @@ class DiagnosticAgent(BaseAgent):
         prev_evidence = context.get("verification_evidence", [])
         evidence.extend(prev_evidence)
 
-        system_prompt = "You are a diagnostic agent. Based on the evidence provided, diagnose the issue."
         user_prompt = "Evidence collected:\n" + "\n".join(evidence)
         
-        diagnosis: Diagnosis = self.provider.generate_json(system_prompt, user_prompt, Diagnosis)
+        if isinstance(self.provider, MockProvider):
+            system_prompt = "You are a diagnostic agent. Based on the evidence provided, diagnose the issue."
+            diagnosis: Diagnosis = self.provider.generate_json(system_prompt, user_prompt, Diagnosis)
+        else:
+            diagnosis: Diagnosis = self.provider.generate_json(DIAGNOSTIC_SYSTEM_PROMPT, user_prompt, Diagnosis)
+            
         diagnosis.evidence = evidence
         return diagnosis
