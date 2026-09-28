@@ -4,820 +4,392 @@ import React, { useState } from "react";
 import Link from "next/link";
 import {
   ShieldAlert,
-  Shield,
-  Activity,
+  ShieldCheck,
   Cpu,
   Clock,
-  CheckSquare,
   ArrowRight,
   Zap,
-  Server,
-  Terminal,
-  AlertTriangle,
-  Play,
   RotateCcw,
-  Radio,
-  ExternalLink,
-  ShieldCheck,
-  Sparkles,
+  Activity,
   CheckCircle2,
-  TrendingDown,
-  TrendingUp,
-  DollarSign,
-  Filter,
+  AlertTriangle,
+  Server,
   Layers,
-  Flame,
-  Globe,
-  RefreshCw,
-  X,
-  Check,
+  Sparkles,
 } from "lucide-react";
-import { MetricCard } from "@/components/ui/MetricCard";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
-import { SeverityBadge, StatusBadge, RiskBadge, AutonomyBadge } from "@/components/ui/Badge";
+import { SeverityBadge, StatusBadge, RiskBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { CodeViewer } from "@/components/ui/CodeViewer";
-import { ClusterDefenseSphere } from "@/components/ui/ClusterDefenseSphere";
-import {
-  mockSystemHealth,
-  mockIncidents,
-  mockAgents,
-  mockApprovals,
-  mockActivityEvents,
-  mockRecoveryStats,
-} from "@/lib/mockData";
-import { cn } from "@/lib/utils";
+import { mockSystemHealth, mockIncidents, mockApprovals, mockActivityEvents } from "@/lib/mockData";
 import { ApprovalRequest, ActivityEvent } from "@/types";
+import { cn } from "@/lib/utils";
+
+// Visual 8-step pipeline indicator
+const RECOVERY_STAGES = [
+  { id: "detected", label: "Failure Detected", status: "completed", agent: "Sensor" },
+  { id: "diagnose", label: "Diagnosing", status: "completed", agent: "Diagnostic Agent" },
+  { id: "first_fix", label: "First Remediation", status: "completed", agent: "Remediation Agent" },
+  { id: "failed", label: "Verify: Failed ⚠️", status: "failed", agent: "Verification Agent" },
+  { id: "re_diagnose", label: "Re-Diagnosis", status: "completed", agent: "Diagnostic Agent" },
+  { id: "second_fix", label: "Canary Rollback", status: "running", agent: "Remediation Agent" },
+  { id: "verify_pass", label: "SLO Verification", status: "pending", agent: "Verification Agent" },
+  { id: "resolved", label: "Auto-Resolved", status: "pending", agent: "Supervisor" },
+];
 
 export default function CommandCenterPage() {
-  const [selectedApproval, setSelectedApproval] = useState<ApprovalRequest | null>(null);
+  const activeIncident = mockIncidents[0]; // INC-8921 (Primary Showcase)
   const [approvalsList, setApprovalsList] = useState(mockApprovals);
-  const [activityList, setActivityList] = useState<ActivityEvent[]>(mockActivityEvents);
-  const [activityFilter, setActivityFilter] = useState<string>("ALL");
-  const [serviceFilter, setServiceFilter] = useState<string>("ALL");
+  const [selectedApproval, setSelectedApproval] = useState<ApprovalRequest | null>(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
 
-  const handleApprove = (id: string) => {
+  const pendingApproval = approvalsList.find((a) => a.status === "pending");
+
+  const handleQuickApprove = (id: string) => {
     setApprovalsList((prev) =>
-      prev.map((app) =>
-        app.id === id ? { ...app, status: "approved" as const } : app
-      )
+      prev.map((app) => (app.id === id ? { ...app, status: "approved" as const } : app))
     );
-    // Add to activity stream
-    const approvedItem = approvalsList.find((a) => a.id === id);
-    if (approvedItem) {
-      const newEvent: ActivityEvent = {
-        id: `act-${Date.now()}`,
-        timestamp: "Just now",
-        category: "approval",
-        agentName: approvedItem.agentName,
-        agentRole: "Incident Mitigator",
-        summary: `Approval ${approvedItem.id} confirmed by Commander: ${approvedItem.title}`,
-        status: "success",
-        targetResource: approvedItem.toolName,
-      };
-      setActivityList([newEvent, ...activityList]);
-    }
     setSelectedApproval(null);
-    setActionNotice(`Action ${id} successfully approved and dispatched to agent!`);
+    setActionNotice(`Action ${id} approved! Dispatched rollback to cluster.`);
     setTimeout(() => setActionNotice(null), 4000);
   };
 
-  const handleReject = (id: string) => {
+  const handleQuickDeny = (id: string) => {
     setApprovalsList((prev) =>
-      prev.map((app) =>
-        app.id === id ? { ...app, status: "rejected" as const } : app
-      )
+      prev.map((app) => (app.id === id ? { ...app, status: "rejected" as const } : app))
     );
-    const rejectedItem = approvalsList.find((a) => a.id === id);
-    if (rejectedItem) {
-      const newEvent: ActivityEvent = {
-        id: `act-${Date.now()}`,
-        timestamp: "Just now",
-        category: "approval",
-        agentName: rejectedItem.agentName,
-        agentRole: "Incident Mitigator",
-        summary: `Approval ${rejectedItem.id} rejected by Commander. Mitigation halted.`,
-        status: "failed",
-        targetResource: rejectedItem.toolName,
-      };
-      setActivityList([newEvent, ...activityList]);
-    }
     setSelectedApproval(null);
-    setActionNotice(`Action ${id} rejected. Agent instructed to hold.`);
+    setActionNotice(`Action ${id} rejected.`);
     setTimeout(() => setActionNotice(null), 4000);
   };
-
-  const filteredServices = mockSystemHealth.services.filter((svc) => {
-    if (serviceFilter === "CRITICAL") return svc.status === "critical";
-    if (serviceFilter === "DEGRADED") return svc.status === "critical" || svc.status === "warning";
-    if (serviceFilter === "HEALTHY") return svc.status === "healthy";
-    return true;
-  });
-
-  const filteredActivity = activityList.filter((act) => {
-    if (activityFilter === "ALL") return true;
-    return act.category === activityFilter.toLowerCase();
-  });
 
   return (
-    <div className="space-y-8">
-      {/* Toast Notification Banner */}
+    <div className="space-y-10 max-w-7xl mx-auto py-2">
+      {/* Toast Notification */}
       {actionNotice && (
-        <div className="p-3.5 rounded-full bg-emerald-950/50 border border-emerald-500/50 text-emerald-400 text-xs font-mono flex items-center justify-between shadow-glowEmerald animate-in fade-in duration-200 px-6">
+        <div className="p-4 rounded-full bg-emerald-950/80 border border-emerald-500/50 text-emerald-300 text-xs font-mono flex items-center justify-between shadow-glowEmerald animate-in fade-in duration-200 px-6">
           <span className="flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
             {actionNotice}
           </span>
-          <button
-            onClick={() => setActionNotice(null)}
-            className="text-emerald-400 hover:text-white font-bold ml-4"
-          >
+          <button onClick={() => setActionNotice(null)} className="text-emerald-400 hover:text-white font-bold ml-4">
             ✕
           </button>
         </div>
       )}
 
-      {/* 1. HERO OPERATIONS COCKPIT (Visual Hierarchy inspired by reference) */}
-      <div className="relative rounded-3xl p-6 sm:p-10 bg-gradient-to-br from-cosmos-panel/95 via-cosmos-card/85 to-cosmos-bg border border-cosmos-border backdrop-blur-2xl shadow-panelCosmos overflow-hidden">
-        {/* Ambient Nebula Light Cones */}
-        <div className="absolute top-0 right-1/4 w-96 h-96 bg-purple-600/15 rounded-full blur-[100px] pointer-events-none" />
-        <div className="absolute bottom-0 right-0 w-80 h-80 bg-pink-600/10 rounded-full blur-[90px] pointer-events-none" />
-        <div className="absolute -top-10 -left-10 w-72 h-72 bg-cyan-500/10 rounded-full blur-[80px] pointer-events-none" />
+      {/* 1. HERO SYSTEM STATUS & AUTONOMOUS RECOVERY BANNER */}
+      <section className="relative rounded-3xl p-8 sm:p-12 bg-gradient-to-br from-cosmos-panel/90 via-cosmos-card/80 to-cosmos-bg border border-cosmos-border/80 backdrop-blur-2xl overflow-hidden shadow-panelCosmos">
+        <div className="absolute top-0 right-1/4 w-80 h-80 bg-purple-600/10 rounded-full blur-[100px] pointer-events-none" />
+        <div className="absolute bottom-0 right-0 w-64 h-64 bg-pink-600/10 rounded-full blur-[90px] pointer-events-none" />
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center relative z-10">
-          {/* Left Column (7 cols): High Impact Headline & Glowing Pill CTAs */}
-          <div className="lg:col-span-7 space-y-6">
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <span className="px-3.5 py-1 rounded-full text-[11px] font-mono font-bold bg-rose-950/60 text-cyber-rose border border-rose-500/50 shadow-glowRose flex items-center gap-1.5">
+        <div className="relative z-10 space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-2.5">
+              <span className="px-3.5 py-1 rounded-full text-xs font-mono font-bold bg-rose-950/70 text-cyber-rose border border-rose-500/50 flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-cyber-rose animate-ping" />
-                DEFCON 2 ALERT ACTIVE
+                ACTIVE SEV-0 INCIDENT
               </span>
-              <span className="px-3 py-1 rounded-full text-[11px] font-mono bg-purple-950/40 text-purple-300 border border-purple-500/30">
-                MESH K8S • US-EAST-1 PRIMARY
-              </span>
-              <span className="text-xs font-mono text-slate-400 flex items-center gap-1">
-                <Radio className="w-3 h-3 text-cyber-cyan animate-pulse" />
-                Live eBPF Telemetry Sync: 100%
+              <span className="px-3 py-1 rounded-full text-xs font-mono bg-purple-950/40 text-purple-300 border border-purple-500/30">
+                1 Outage • 1 Approval Required
               </span>
             </div>
 
-            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-white leading-[1.12]">
-              Autonomous Cyber Defense &{" "}
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-pink-400 via-purple-300 to-cyan-300">
-                SRE Mitigation
-              </span>{" "}
-              Engine.
+            <div className="text-xs font-mono text-slate-400 flex items-center gap-4">
+              <span>MTTD: <strong className="text-white">42s</strong></span>
+              <span>•</span>
+              <span>MTTM: <strong className="text-white">4m 12s</strong></span>
+              <span>•</span>
+              <span>Self-Healing: <strong className="text-emerald-400">92.4%</strong></span>
+            </div>
+          </div>
+
+          <div className="max-w-3xl space-y-3">
+            <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-white leading-tight">
+              Autonomous AI SRE & Outage Remediation
             </h1>
-
-            <p className="text-xs sm:text-sm text-slate-300 font-mono leading-relaxed max-w-xl">
-              SentinelOps multi-agent control room actively monitoring 8 production services. 
-              Real-time threat triage underway for 1 critical outage and 1 credential stuffing alert with zero-downtime rollback guards.
+            <p className="text-sm sm:text-base text-slate-300 font-mono leading-relaxed">
+              SentinelOps multi-agent swarm detected a 502 cascading spike on <strong className="text-cyan-300">api-gateway</strong>. 
+              Initial pod restart failed verification; deep re-diagnosis isolated commit regression and staged a zero-downtime canary rollback.
             </p>
-
-            <div className="text-[11px] font-mono text-slate-400 flex items-center gap-3 flex-wrap">
-              <span>Powered by <strong className="text-white">Gemini 1.5 Pro & Claude 3.5 Sonnet</strong></span>
-              <span className="text-slate-600">•</span>
-              <span className="text-emerald-400 font-bold flex items-center gap-1">
-                <CheckCircle2 className="w-3.5 h-3.5" /> 84.6% Auto-Healed
-              </span>
-              <span className="text-slate-600">•</span>
-              <span className="text-cyber-cyan font-bold">28ms Mesh Latency</span>
-            </div>
-
-            {/* Glowing Pill CTAs matching reference */}
-            <div className="flex items-center gap-3.5 flex-wrap pt-2">
-              <Link href="/incidents/INC-8921">
-                <Button variant="gradientPill" size="lg" className="font-mono text-xs">
-                  <ShieldAlert className="w-4 h-4 mr-1" />
-                  Enter Live War Room (INC-8921)
-                </Button>
-              </Link>
-              <Link href="/approvals">
-                <Button variant="gradientOutlinePill" size="lg" className="font-mono text-xs">
-                  <Zap className="w-4 h-4 mr-1 text-cyber-amber" />
-                  Review 2 Pending Approvals
-                </Button>
-              </Link>
-            </div>
           </div>
 
-          {/* Right Column (5 cols): 3D Wireframe Polyhedral Mesh */}
-          <div className="lg:col-span-5 flex items-center justify-center lg:justify-end">
-            <ClusterDefenseSphere />
+          <div className="flex flex-wrap items-center gap-3 pt-2">
+            <Link href="/incidents/INC-8921">
+              <Button variant="gradientPill" size="lg" className="font-mono text-xs">
+                <ShieldAlert className="w-4 h-4 mr-2" />
+                Investigate INC-8921 War Room
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </Link>
+            {pendingApproval && (
+              <Button
+                variant="gradientOutlinePill"
+                size="lg"
+                className="font-mono text-xs"
+                onClick={() => setSelectedApproval(pendingApproval)}
+              >
+                <Zap className="w-4 h-4 mr-2 text-cyber-amber" />
+                Review Pending Approval (APP-401)
+              </Button>
+            )}
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* 2. RECOVERY STATISTICS & SRE PERFORMANCE METRICS */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-mono font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-cyber-emerald" />
-            Recovery & Reliability Telemetry
-          </span>
-          <span className="text-[11px] font-mono text-slate-500">
-            Audit Period: Last 24 Hours
-          </span>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
-          <MetricCard
-            label="Mean Detect (MTTD)"
-            value={mockRecoveryStats.mttd}
-            subtext="Automated eBPF trigger"
-            trend="down"
-            trendValue="-14%"
-            trendPositive={true}
-            statusDot="cyan"
-            icon={<Clock className="w-4 h-4 text-cyber-cyan" />}
-          />
-          <MetricCard
-            label="Mean Mitigate (MTTM)"
-            value={mockRecoveryStats.mttm}
-            subtext="Autonomous canary rollback"
-            trend="down"
-            trendValue="-26%"
-            trendPositive={true}
-            statusDot="emerald"
-            icon={<Activity className="w-4 h-4 text-cyber-emerald" />}
-          />
-          <MetricCard
-            label="Self-Healing Rate"
-            value={`${mockRecoveryStats.autonomousResolutionRate}%`}
-            subtext="312 / 368 self-resolved"
-            trend="up"
-            trendValue="+4.1%"
-            trendPositive={true}
-            statusDot="magenta"
-            icon={<Cpu className="w-4 h-4 text-cyber-magenta" />}
-          />
-          <MetricCard
-            label="Resolved Outages"
-            value={mockRecoveryStats.totalIncidentsResolved}
-            subtext="Zero SLA penalties"
-            trend="up"
-            trendValue="+18"
-            trendPositive={true}
-            statusDot="emerald"
-            icon={<CheckCircle2 className="w-4 h-4 text-emerald-400" />}
-          />
-          <MetricCard
-            label="Downtime Prevented"
-            value={`${mockRecoveryStats.preventedDowntimeMinutes}m`}
-            subtext="Calculated via MTBF"
-            trend="up"
-            trendValue="+32m"
-            trendPositive={true}
-            statusDot="cyan"
-            icon={<Shield className="w-4 h-4 text-cyan-400" />}
-          />
-          <MetricCard
-            label="Est. Cost Saved"
-            value={mockRecoveryStats.estimatedCostSaved}
-            subtext="Based on revenue impact"
-            trend="up"
-            trendValue="+12%"
-            trendPositive={true}
-            statusDot="magenta"
-            icon={<DollarSign className="w-4 h-4 text-pink-400" />}
-          />
-        </div>
-      </div>
-
-      {/* 3. CORE MULTI-PANEL OPERATIONS DECK */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column (8 cols): Active Incidents + Service Mesh Health */}
-        <div className="lg:col-span-8 space-y-6">
-          {/* Active Incidents Stream */}
-          <Card>
-            <CardHeader>
-              <div>
-                <CardTitle>
-                  <ShieldAlert className="w-4 h-4 text-cyber-rose" />
-                  Active Threat & Outage Stream
-                </CardTitle>
-                <p className="text-xs text-slate-400 font-mono mt-0.5">
-                  Real-time threat triage and autonomous agent mitigation workflows
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Link href="/incidents">
-                  <Button variant="ghost" size="sm" className="text-xs font-mono">
-                    All Incidents ({mockIncidents.length}) <ArrowRight className="w-3 h-3 ml-1" />
-                  </Button>
-                </Link>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="divide-y divide-cosmos-border/60">
-                {mockIncidents.slice(0, 3).map((incident) => {
-                  const leadAgent = mockAgents.find(
-                    (a) => a.id === incident.leadAgentId
-                  );
-
-                  return (
-                    <div
-                      key={incident.id}
-                      className="p-5 hover:bg-cosmos-subpanel/40 transition-colors"
-                    >
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2">
-                        <div className="flex items-center gap-2.5 flex-wrap">
-                          <SeverityBadge severity={incident.severity} />
-                          <span className="font-mono text-xs font-bold text-white">
-                            {incident.id}
-                          </span>
-                          <StatusBadge status={incident.status} />
-                          <span className="text-[11px] font-mono text-slate-400 flex items-center gap-1">
-                            <Clock className="w-3 h-3 text-slate-500" />
-                            {incident.duration} elapsed
-                          </span>
-                        </div>
-                        <Link href={`/incidents/${incident.id}`}>
-                          <Button
-                            variant="cyanPill"
-                            size="sm"
-                            className="font-mono text-xs"
-                          >
-                            Open War Room
-                            <ArrowRight className="w-3 h-3 ml-1" />
-                          </Button>
-                        </Link>
-                      </div>
-
-                      <h4 className="text-sm font-semibold text-slate-100 mb-1.5 font-mono">
-                        {incident.title}
-                      </h4>
-                      <p className="text-xs text-slate-400 mb-3 line-clamp-2 leading-relaxed font-mono">
-                        {incident.summary}
-                      </p>
-
-                      <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-cosmos-border/50 text-xs font-mono text-slate-400">
-                        <div className="flex items-center gap-2">
-                          <span className="text-slate-500">Lead Agent:</span>
-                          <span className="text-cyan-300 font-semibold flex items-center gap-1.5">
-                            <Cpu className="w-3 h-3 text-cyber-cyan" />
-                            {leadAgent?.name || incident.leadAgentId}
-                          </span>
-                          <span className="text-slate-600">•</span>
-                          <span className="text-slate-500">RCA Confidence:</span>
-                          <span className="text-emerald-400 font-bold">
-                            {incident.rca.confidence}%
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-1.5">
-                          {incident.affectedServices.map((svc) => (
-                            <span
-                              key={svc}
-                              className="px-2.5 py-0.5 rounded-full bg-slate-900/90 text-[10px] text-slate-300 border border-slate-700/60"
-                            >
-                              {svc}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Service Mesh & Service Health Grid */}
-          <Card>
-            <CardHeader>
-              <div>
-                <CardTitle>
-                  <Server className="w-4 h-4 text-cyber-cyan" />
-                  Service Health & Mesh Topology
-                </CardTitle>
-                <p className="text-xs text-slate-400 font-mono mt-0.5">
-                  Microservice cluster health across 8 core production pods
-                </p>
-              </div>
-
-              {/* Service Status Filter Pills */}
-              <div className="flex items-center gap-1.5">
-                {["ALL", "CRITICAL", "DEGRADED", "HEALTHY"].map((f) => (
-                  <button
-                    key={f}
-                    onClick={() => setServiceFilter(f)}
-                    className={cn(
-                      "px-2.5 py-1 rounded-full text-[10px] font-mono transition-all",
-                      serviceFilter === f
-                        ? "bg-purple-600 text-white font-bold shadow-glowPurple border border-purple-400/40"
-                        : "bg-cosmos-subpanel text-slate-400 hover:text-white border border-cosmos-border"
-                    )}
-                  >
-                    {f}
-                  </button>
-                ))}
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                {filteredServices.map((svc) => (
-                  <div
-                    key={svc.name}
-                    className={cn(
-                      "p-3.5 rounded-2xl border font-mono transition-all backdrop-blur-md relative overflow-hidden group",
-                      svc.status === "critical"
-                        ? "bg-rose-950/25 border-rose-500/50 shadow-[0_0_15px_rgba(255,42,109,0.2)]"
-                        : svc.status === "warning"
-                        ? "bg-amber-950/25 border-amber-500/40 shadow-[0_0_15px_rgba(245,158,11,0.2)]"
-                        : "bg-cosmos-subpanel/50 border-cosmos-border hover:border-purple-500/40"
-                    )}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-semibold text-slate-200 truncate font-mono">
-                        {svc.name}
-                      </span>
-                      <span
-                        className={cn(
-                          "w-2.5 h-2.5 rounded-full",
-                          svc.status === "critical"
-                            ? "bg-cyber-rose animate-ping"
-                            : svc.status === "warning"
-                            ? "bg-cyber-amber animate-pulse"
-                            : "bg-cyber-emerald"
-                        )}
-                      />
-                    </div>
-
-                    <div className="space-y-1.5 text-[11px] text-slate-400">
-                      <div className="flex justify-between">
-                        <span>Latency:</span>
-                        <span
-                          className={cn(
-                            "font-bold",
-                            svc.latency > 150
-                              ? "text-rose-400"
-                              : svc.latency > 50
-                              ? "text-amber-400"
-                              : "text-emerald-400"
-                          )}
-                        >
-                          {svc.latency}ms
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Error Rate:</span>
-                        <span
-                          className={cn(
-                            "font-bold",
-                            svc.errorRate > 5
-                              ? "text-rose-400"
-                              : svc.errorRate > 0
-                              ? "text-amber-400"
-                              : "text-slate-400"
-                          )}
-                        >
-                          {svc.errorRate}%
-                        </span>
-                      </div>
-                      {svc.trafficRps && (
-                        <div className="flex justify-between">
-                          <span>Traffic:</span>
-                          <span className="text-slate-300 font-bold">
-                            {(svc.trafficRps / 1000).toFixed(1)}k rps
-                          </span>
-                        </div>
-                      )}
-                      <div className="text-[10px] text-slate-500 truncate pt-1 border-t border-slate-800">
-                        {svc.node}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Right Column (4 cols): Pending Approvals + Agent Fleet Status */}
-        <div className="lg:col-span-4 space-y-6">
-          {/* Pending HITL Approvals Dock */}
-          <Card variant="glowAmber">
-            <CardHeader className="bg-amber-950/25 border-amber-500/30">
-              <div>
-                <CardTitle className="text-amber-300">
-                  <Zap className="w-4 h-4 text-cyber-amber" />
-                  Pending Approvals
-                </CardTitle>
-                <p className="text-xs text-amber-200/70 font-mono mt-0.5">
-                  High-risk autonomous mitigations awaiting human sign-off
-                </p>
-              </div>
-              <Link href="/approvals">
-                <span className="text-[11px] font-mono text-cyber-amber hover:underline font-bold">
-                  All ({approvalsList.filter((a) => a.status === "pending").length})
-                </span>
-              </Link>
-            </CardHeader>
-            <CardContent className="space-y-3.5">
-              {approvalsList
-                .filter((app) => app.status === "pending")
-                .map((approval) => (
-                  <div
-                    key={approval.id}
-                    className="p-4 rounded-2xl bg-cosmos-subpanel/90 border border-cosmos-border space-y-2.5 font-mono text-xs shadow-panelCosmos"
-                  >
-                    <div className="flex items-center justify-between">
-                      <RiskBadge risk={approval.riskLevel} />
-                      <span className="text-[10px] text-amber-400 flex items-center gap-1 font-bold">
-                        <Clock className="w-3 h-3" />
-                        {approval.expiresInSeconds}s auto-reject
-                      </span>
-                    </div>
-
-                    <h5 className="font-semibold text-white leading-snug">
-                      {approval.title}
-                    </h5>
-
-                    <div className="text-[11px] text-slate-400 flex items-center justify-between">
-                      <span>Agent: <strong className="text-cyber-cyan">{approval.agentName}</strong></span>
-                      <span className="text-slate-500">Tool: {approval.toolName}</span>
-                    </div>
-
-                    <div className="flex items-center gap-2 pt-1">
-                      <Button
-                        variant="gradientPill"
-                        size="sm"
-                        className="w-full font-mono text-xs"
-                        onClick={() => setSelectedApproval(approval)}
-                      >
-                        Inspect & Sign-off
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-
-              {approvalsList.filter((a) => a.status === "pending").length === 0 && (
-                <div className="py-8 text-center text-xs font-mono text-slate-500">
-                  No pending approval requests. System operating in full autonomy.
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Autonomous Agent Status & Fleet Telemetry */}
-          <Card>
-            <CardHeader>
-              <div>
-                <CardTitle>
-                  <Cpu className="w-4 h-4 text-cyber-magenta" />
-                  Autonomous Agent Fleet
-                </CardTitle>
-                <p className="text-xs text-slate-400 font-mono mt-0.5">
-                  AI fleet health, active roles, and mission execution states
-                </p>
-              </div>
-              <Link href="/agents">
-                <Button variant="ghost" size="sm" className="text-xs font-mono">
-                  Studio <ArrowRight className="w-3 h-3 ml-1" />
-                </Button>
-              </Link>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="divide-y divide-cosmos-border/60">
-                {mockAgents.map((agent) => (
-                  <div
-                    key={agent.id}
-                    className="p-4 hover:bg-cosmos-subpanel/30 transition-colors"
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs font-bold text-white">
-                          {agent.name}
-                        </span>
-                        <span className="text-[10px] font-mono text-slate-500">
-                          [{agent.codename}]
-                        </span>
-                      </div>
-                      <span
-                        className={cn(
-                          "px-2.5 py-0.5 rounded-full text-[10px] font-mono font-medium",
-                          agent.status === "mitigating"
-                            ? "bg-purple-950/80 text-purple-300 border border-purple-800/60 shadow-glowPurple"
-                            : agent.status === "investigating"
-                            ? "bg-cyan-950/80 text-cyan-300 border border-cyan-800/60"
-                            : "bg-slate-900 text-slate-400"
-                        )}
-                      >
-                        {agent.status.toUpperCase()}
-                      </span>
-                    </div>
-
-                    <p className="text-[11px] text-slate-400 font-mono truncate mb-2">
-                      {agent.currentTask || "Idle on standby"}
-                    </p>
-
-                    <div className="flex items-center justify-between text-[10px] font-mono text-slate-500">
-                      <span>Model: {agent.model.split("/")[0]}</span>
-                      <span className="text-emerald-400 font-bold">
-                        {agent.stats.approvalSuccessRate}% accuracy
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-
-      {/* 4. RECENT ACTIVITY EVENT STREAM */}
-      <Card>
-        <CardHeader>
+      {/* 2. CORE RECOVERY PIPELINE VISUALIZATION */}
+      <section className="p-8 rounded-3xl bg-cosmos-card/60 border border-cosmos-border backdrop-blur-xl space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
-            <CardTitle>
+            <h2 className="text-base font-bold text-white font-mono flex items-center gap-2">
               <Activity className="w-4 h-4 text-cyber-cyan" />
-              Autonomous Activity & Audit Stream
-            </CardTitle>
+              Live Recovery Pipeline • INC-8921
+            </h2>
             <p className="text-xs text-slate-400 font-mono mt-0.5">
-              Live chronological record of mitigation steps, security interventions, and agent tool executions
+              Multi-agent autonomous remediation & 2-stage verification loop
             </p>
           </div>
+          <span className="text-xs font-mono text-cyan-400 font-semibold">
+            Stage 6 of 8: Canary Rollback Awaiting Sign-off
+          </span>
+        </div>
 
-          {/* Activity Category Filters */}
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {["ALL", "MITIGATION", "SECURITY", "APPROVAL", "RECOVERY", "TELEMETRY"].map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setActivityFilter(cat)}
+        {/* 8-Stage Recovery Stepper */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5 pt-1">
+          {RECOVERY_STAGES.map((st, idx) => (
+            <div
+              key={st.id}
+              className={cn(
+                "p-3.5 rounded-2xl border font-mono text-xs transition-all relative",
+                st.status === "completed"
+                  ? "bg-emerald-950/20 border-emerald-500/40 text-emerald-300"
+                  : st.status === "failed"
+                  ? "bg-rose-950/30 border-rose-500/50 text-rose-300 shadow-[0_0_15px_rgba(255,42,109,0.15)]"
+                  : st.status === "running"
+                  ? "bg-gradient-to-r from-purple-950/80 to-pink-950/80 border-purple-500/60 text-white shadow-glowPurple"
+                  : "bg-cosmos-subpanel/40 border-cosmos-border/60 text-slate-500 opacity-60"
+              )}
+            >
+              <div className="flex items-center justify-between mb-1.5 text-[10px] font-bold">
+                <span>0{idx + 1}</span>
+                {st.status === "completed" && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />}
+                {st.status === "failed" && <AlertTriangle className="w-3.5 h-3.5 text-rose-400 animate-pulse" />}
+                {st.status === "running" && <RotateCcw className="w-3.5 h-3.5 text-pink-400 animate-spin" />}
+              </div>
+              <div className="font-semibold text-xs leading-tight mb-1">{st.label}</div>
+              <div className="text-[10px] text-slate-400 truncate">{st.agent}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* 3. TWO MEANINGFUL SECTIONS: AFFECTED SERVICES & PENDING HUMAN APPROVAL */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        {/* Left (7 cols): Core Microservices */}
+        <section className="lg:col-span-7 p-8 rounded-3xl bg-cosmos-card/60 border border-cosmos-border backdrop-blur-xl space-y-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-bold text-white font-mono flex items-center gap-2">
+                <Server className="w-4 h-4 text-cyber-cyan" />
+                Production Microservices Health
+              </h2>
+              <p className="text-xs text-slate-400 font-mono mt-0.5">
+                4 core services under SentinelOps active monitoring
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            {mockSystemHealth.services.map((svc) => (
+              <div
+                key={svc.name}
                 className={cn(
-                  "px-3 py-1 rounded-full text-[10px] font-mono transition-all",
-                  activityFilter === cat
-                    ? "bg-gradient-to-r from-blue-600 to-cyan-500 text-white font-bold shadow-glowCyan border border-cyan-400/40"
-                    : "bg-cosmos-subpanel text-slate-400 hover:text-white border border-cosmos-border"
+                  "p-4 rounded-2xl border font-mono transition-all backdrop-blur-md",
+                  svc.status === "critical"
+                    ? "bg-rose-950/20 border-rose-500/40"
+                    : svc.status === "warning"
+                    ? "bg-amber-950/20 border-amber-500/40"
+                    : "bg-cosmos-subpanel/50 border-cosmos-border/60"
                 )}
               >
-                {cat}
-              </button>
-            ))}
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="divide-y divide-cosmos-border/50 font-mono text-xs">
-            {filteredActivity.map((act) => (
-              <div
-                key={act.id}
-                className="p-4 hover:bg-cosmos-subpanel/30 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-              >
-                <div className="flex items-start gap-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-white font-mono">{svc.name}</span>
                   <span
                     className={cn(
-                      "w-2 h-2 rounded-full mt-1.5 shrink-0",
-                      act.status === "success"
-                        ? "bg-cyber-emerald shadow-glowEmerald"
-                        : act.status === "warning"
-                        ? "bg-cyber-amber animate-pulse shadow-glowAmber"
-                        : act.status === "pending"
-                        ? "bg-cyber-cyan animate-ping"
-                        : "bg-cyber-rose shadow-glowRose"
+                      "w-2.5 h-2.5 rounded-full",
+                      svc.status === "critical"
+                        ? "bg-cyber-rose animate-ping"
+                        : svc.status === "warning"
+                        ? "bg-cyber-amber animate-pulse"
+                        : "bg-cyber-emerald"
                     )}
                   />
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-bold text-white">
-                        {act.agentName}
-                      </span>
-                      <span className="text-[10px] text-slate-500">
-                        [{act.agentRole}]
-                      </span>
-                      <span className="text-[10px] px-2 py-0.2 rounded-full bg-slate-900 text-purple-300 border border-slate-800 uppercase">
-                        {act.category}
-                      </span>
-                    </div>
-                    <p className="text-slate-300 text-xs mt-0.5">
-                      {act.summary}
-                    </p>
-                    {act.details && (
-                      <p className="text-[11px] text-slate-500 mt-0.5">
-                        {act.details}
-                      </p>
-                    )}
-                  </div>
                 </div>
 
-                <div className="flex items-center gap-4 text-xs shrink-0 self-end sm:self-center">
-                  <span className="px-2 py-0.5 rounded-full bg-slate-900/80 border border-slate-800 text-[10px] text-slate-400">
-                    {act.targetResource}
-                  </span>
-                  <span className="text-slate-500 text-[11px]">
-                    {act.timestamp} UTC
-                  </span>
+                <div className="space-y-1.5 text-xs text-slate-400">
+                  <div className="flex justify-between">
+                    <span>Latency:</span>
+                    <span className={cn("font-bold", svc.latency > 100 ? "text-rose-400" : "text-emerald-400")}>
+                      {svc.latency}ms
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Error Rate:</span>
+                    <span className={cn("font-bold", svc.errorRate > 0 ? "text-rose-400" : "text-slate-400")}>
+                      {svc.errorRate}%
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-800/80">
+                    <span>Traffic: {svc.trafficRps} req/s</span>
+                    <span>{svc.node}</span>
+                  </div>
                 </div>
               </div>
             ))}
           </div>
-        </CardContent>
-      </Card>
+        </section>
 
-      {/* Quick Approval Review Modal */}
+        {/* Right (5 cols): Pending Approval Spotlight */}
+        <section className="lg:col-span-5 p-8 rounded-3xl bg-cosmos-card/60 border border-cosmos-border backdrop-blur-xl space-y-5 flex flex-col justify-between">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-bold text-white font-mono flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-cyber-amber" />
+                  Human-In-The-Loop Gate
+                </h2>
+                <p className="text-xs text-slate-400 font-mono mt-0.5">
+                  High-risk automated actions awaiting confirmation
+                </p>
+              </div>
+              <RiskBadge risk="CRITICAL" />
+            </div>
+
+            {pendingApproval ? (
+              <div className="p-5 rounded-2xl bg-cosmos-subpanel/80 border border-cosmos-border space-y-3 font-mono text-xs">
+                <div className="flex items-center justify-between text-slate-400 text-[11px]">
+                  <span>Action: <strong className="text-white">{pendingApproval.action}</strong></span>
+                  <span className="text-amber-400">{pendingApproval.expiresInSeconds}s auto-reject</span>
+                </div>
+
+                <div className="text-slate-200 leading-snug font-semibold text-xs">
+                  {pendingApproval.title}
+                </div>
+
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  {pendingApproval.reason}
+                </p>
+
+                <div className="pt-2 flex items-center gap-2">
+                  <Button
+                    variant="gradientPill"
+                    size="sm"
+                    className="w-full font-mono text-xs"
+                    onClick={() => handleQuickApprove(pendingApproval.id)}
+                  >
+                    Approve Rollback
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    className="font-mono text-xs rounded-full px-4"
+                    onClick={() => handleQuickDeny(pendingApproval.id)}
+                  >
+                    Deny
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="py-12 text-center text-xs font-mono text-slate-500">
+                ✓ All pending actions signed off. Autonomous system operating smoothly.
+              </div>
+            )}
+          </div>
+
+          <div className="text-[11px] font-mono text-slate-500 pt-3 border-t border-cosmos-border flex items-center justify-between">
+            <span>Supervisor Autonomy: <strong className="text-cyan-400">L3 Autonomous</strong></span>
+            <Link href="/approvals" className="text-cyan-400 hover:underline">
+              Approvals Center →
+            </Link>
+          </div>
+        </section>
+      </div>
+
+      {/* 4. RECENT AUTONOMOUS ACTIVITY STREAM */}
+      <section className="p-8 rounded-3xl bg-cosmos-card/60 border border-cosmos-border backdrop-blur-xl space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-bold text-white font-mono flex items-center gap-2">
+              <Clock className="w-4 h-4 text-cyber-cyan" />
+              Autonomous Activity Feed
+            </h2>
+            <p className="text-xs text-slate-400 font-mono mt-0.5">
+              Live chronological record of diagnostic triage, tool execution, and verifications
+            </p>
+          </div>
+        </div>
+
+        <div className="divide-y divide-cosmos-border/60">
+          {mockActivityEvents.slice(0, 5).map((act) => (
+            <div key={act.id} className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-mono">
+              <div className="flex items-center gap-3">
+                <span className="text-slate-500 text-[11px] shrink-0">{act.timestamp}</span>
+                <span
+                  className={cn(
+                    "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase",
+                    act.status === "success"
+                      ? "bg-emerald-950/60 text-emerald-400 border border-emerald-500/30"
+                      : act.status === "failed"
+                      ? "bg-rose-950/60 text-rose-400 border border-rose-500/30"
+                      : "bg-amber-950/60 text-amber-400 border border-amber-500/30"
+                  )}
+                >
+                  {act.agentName}
+                </span>
+                <span className="text-slate-200 font-medium">{act.summary}</span>
+              </div>
+              <span className="text-slate-500 text-[11px] shrink-0">{act.targetResource}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Approval Details Modal */}
       {selectedApproval && (
         <Modal
           isOpen={true}
           onClose={() => setSelectedApproval(null)}
-          title={`Action Review: ${selectedApproval.id}`}
-          description={`Requested by ${selectedApproval.agentName} for ${selectedApproval.incidentId}`}
-          maxWidth="2xl"
+          title={`Approval Request: ${selectedApproval.id}`}
+          maxWidth="lg"
         >
           <div className="space-y-4 font-mono text-xs">
-            <div className="p-4 rounded-2xl bg-cosmos-subpanel border border-cosmos-border">
-              <div className="flex items-center justify-between mb-1.5">
-                <RiskBadge risk={selectedApproval.riskLevel} />
-                <span className="text-amber-400">
-                  Target Tool: {selectedApproval.toolName}
-                </span>
-              </div>
-              <h4 className="text-sm font-bold text-white">
-                {selectedApproval.title}
-              </h4>
-              <p className="text-slate-400 text-xs mt-1">
-                {selectedApproval.description}
-              </p>
+            <div className="flex items-center justify-between">
+              <span className="text-slate-400">Target: <strong className="text-white">{selectedApproval.target}</strong></span>
+              <RiskBadge risk={selectedApproval.riskLevel} />
             </div>
 
-            {/* Blast radius */}
-            <div>
-              <span className="text-slate-400 font-semibold block mb-1">
-                Blast Radius Impact:
-              </span>
-              <ul className="space-y-1">
-                {selectedApproval.blastRadius.map((b, i) => (
-                  <li key={i} className="text-slate-300 flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-cyber-amber" />
-                    {b}
-                  </li>
-                ))}
-              </ul>
-            </div>
+            <p className="text-slate-300 leading-relaxed">{selectedApproval.description}</p>
 
-            {/* Safety checks */}
-            <div>
-              <span className="text-slate-400 font-semibold block mb-1.5">
-                Automated Safety Guardrails:
-              </span>
-              <div className="space-y-1.5">
-                {selectedApproval.safetyChecks.map((sc) => (
-                  <div
-                    key={sc.id}
-                    className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 flex items-start justify-between gap-2"
-                  >
-                    <div>
-                      <span className="text-white font-medium">{sc.name}</span>
-                      <p className="text-slate-400 text-[11px] mt-0.5">
-                        {sc.details}
-                      </p>
-                    </div>
-                    <span
-                      className={cn(
-                        "px-2 py-0.5 rounded-full text-[10px] uppercase font-bold shrink-0",
-                        sc.status === "passed"
-                          ? "bg-emerald-950 text-emerald-400 border border-emerald-800"
-                          : "bg-amber-950 text-amber-400 border border-amber-800"
-                      )}
-                    >
-                      {sc.status}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Diff / Action command viewer */}
             {selectedApproval.actionDiff && (
-              <div>
-                <span className="text-slate-400 font-semibold block mb-1">
-                  Proposed Action Diff:
-                </span>
-                <CodeViewer
-                  code={selectedApproval.actionDiff.after}
-                  title="COMMAND / MANIFEST PREVIEW"
-                  language={selectedApproval.actionDiff.type}
-                />
-              </div>
+              <CodeViewer
+                title="Rollback Execution Plan"
+                code={selectedApproval.actionDiff.after}
+                language="yaml"
+              />
             )}
 
-            {/* Action buttons */}
-            <div className="flex items-center justify-end gap-3 pt-3 border-t border-cosmos-border">
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-cosmos-border">
               <Button
                 variant="danger"
-                size="md"
-                onClick={() => handleReject(selectedApproval.id)}
-                className="rounded-full"
+                onClick={() => handleQuickDeny(selectedApproval.id)}
               >
-                Reject & Halt
+                Deny Action
               </Button>
               <Button
                 variant="gradientPill"
-                size="md"
-                onClick={() => handleApprove(selectedApproval.id)}
+                onClick={() => handleQuickApprove(selectedApproval.id)}
               >
-                Approve & Execute Action
+                Approve & Execute Rollback
               </Button>
             </div>
           </div>
