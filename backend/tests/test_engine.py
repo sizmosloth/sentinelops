@@ -86,3 +86,20 @@ def test_engine_safety_gate_require_approval():
     assert incident.status == IncidentStatus.RESOLVED
     statuses = [h["status"] for h in incident.history]
     assert IncidentStatus.WAITING_APPROVAL.value in statuses
+
+def test_engine_escalated_due_to_remediation_error():
+    class AlwaysFailExecutor(MockToolExecutor):
+        def execute(self, request):
+            super().execute(request)
+            if request.tool == "check_health":
+                return ToolResult(success=True, target=request.target, data={"healthy": False, "status_code": 503})
+            return ToolResult(success=True, target=request.target, data={})
+
+    provider = MockProvider()
+    executor = AlwaysFailExecutor()
+    engine = Orchestrator(provider, executor)
+    
+    incident = engine.run("Fix it")
+    
+    assert incident.status == IncidentStatus.ESCALATED
+    assert incident.attempt == 2
