@@ -1,0 +1,5 @@
+FROM postgres:16
+
+ENV POSTGRES_DB=sentinelops
+ENV POSTGRES_USER=sentinel
+ENV POSTGRES_PASSWORD=sentinel
