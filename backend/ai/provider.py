@@ -36,9 +36,14 @@ class MockProvider(AIProvider):
         if name == "Plan":
             return schema(goal="Mock Goal", strategy=["Step 1"])
         elif name == "Diagnosis":
-            return schema(diagnosis="Mock diagnosis", confidence=0.9, evidence=["Log"])
+            if "connection refused" in user_prompt.lower() or "stopped" in user_prompt.lower():
+                return schema(diagnosis="database_unavailable", confidence=0.94, evidence=["mocked"])
+            else:
+                return schema(diagnosis="unknown_issue", confidence=0.5, evidence=["mocked"])
         elif name == "ActionProposal":
-            return schema(tool="mock_tool", target="mock_target", reason="mock_reason", risk=RiskLevel.low)
+            if "SCENARIO: api_first" in user_prompt and "('restart_container', 'demo-api')" not in user_prompt:
+                return schema(tool="restart_container", target="demo-api", reason="mock", risk=RiskLevel.medium)
+            return schema(tool="restart_container", target="demo-db", reason="mock", risk=RiskLevel.medium)
         elif name == "VerificationResult":
             return schema(success=True, message="Mock success", evidence=["Test"])
         else:
