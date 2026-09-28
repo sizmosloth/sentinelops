@@ -1,0 +1,99 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-cosmos-void: #020308;
+  --bg-cosmos-base: #040714;
+  --bg-cosmos-panel: #080d22;
+  --bg-cosmos-subpanel: #0e1538;
+  --border-cosmos: #1a244d;
+}
+
+body {
+  background-color: var(--bg-cosmos-void);
+  color: #e5ecf6;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  background-image: 
+    radial-gradient(ellipse at 80% -10%, rgba(147, 51, 234, 0.15) 0%, transparent 50%),
+    radial-gradient(ellipse at 20% 40%, rgba(6, 182, 212, 0.08) 0%, transparent 45%),
+    radial-gradient(ellipse at 70% 85%, rgba(236, 72, 153, 0.1) 0%, transparent 45%),
+    radial-gradient(2px 2px at 15% 15%, rgba(255, 255, 255, 0.35), transparent),
+    radial-gradient(1.5px 1.5px at 45% 25%, rgba(255, 255, 255, 0.25), transparent),
+    radial-gradient(2px 2px at 75% 35%, rgba(255, 255, 255, 0.4), transparent),
+    radial-gradient(1.5px 1.5px at 85% 65%, rgba(255, 255, 255, 0.25), transparent),
+    radial-gradient(2px 2px at 30% 75%, rgba(255, 255, 255, 0.35), transparent);
+  background-attachment: fixed;
+}
+
+/* Custom Sleek Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #030510;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1c2754;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #2a3c7e;
+}
+
+/* Cosmic Cyber Glow Utilities */
+.glow-cyan {
+  box-shadow: 0 0 20px -2px rgba(0, 240, 255, 0.45);
+}
+
+.glow-magenta {
+  box-shadow: 0 0 20px -2px rgba(236, 72, 153, 0.45);
+}
+
+.glow-purple {
+  box-shadow: 0 0 20px -2px rgba(157, 78, 221, 0.45);
+}
+
+.glow-pill {
+  box-shadow: 0 0 25px 0 rgba(168, 85, 247, 0.45), 0 0 10px 0 rgba(236, 72, 153, 0.35);
+}
+
+.glow-pill-cyan {
+  box-shadow: 0 0 25px 0 rgba(6, 182, 212, 0.4), 0 0 10px 0 rgba(59, 130, 246, 0.3);
+}
+
+/* Subtle Cosmic Grid Pattern */
+.bg-grid-cosmos {
+  background-size: 36px 36px;
+  background-image: 
+    linear-gradient(to right, rgba(26, 36, 77, 0.3) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(26, 36, 77, 0.3) 1px, transparent 1px);
+}
+
+/* Glassmorphism Surface with Fine Border Glow */
+.glass-panel {
+  background: rgba(8, 13, 34, 0.72);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(34, 49, 102, 0.55);
+}
+
+.glass-panel-elevated {
+  background: rgba(14, 21, 56, 0.75);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(49, 69, 138, 0.65);
+}
+
+.glass-pill {
+  background: rgba(14, 21, 56, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(49, 69, 138, 0.6);
+}
