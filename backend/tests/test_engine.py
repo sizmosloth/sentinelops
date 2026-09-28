@@ -103,3 +103,59 @@ def test_engine_escalated_due_to_remediation_error():
     
     assert incident.status == IncidentStatus.ESCALATED
     assert incident.attempt == 2
+
+def test_escalation_records_reason_max_attempts():
+    class AlwaysFailExecutor(MockToolExecutor):
+        def execute(self, request):
+            super().execute(request)
+            if request.tool == "check_health":
+                return ToolResult(success=True, target=request.target, data={"healthy": False, "status_code": 503})
+            return ToolResult(success=True, target=request.target, data={})
+            
+    class UniqueProvider(MockProvider):
+        def __init__(self):
+            self.counter = 0
+            
+        def generate_json(self, system_prompt, user_prompt, schema):
+            if schema.__name__ == "ActionProposal":
+                from backend.schemas.actions import RiskLevel
+                self.counter += 1
+                return schema(tool="restart_container", target=f"demo-db-{self.counter}", reason="mock", risk=RiskLevel.medium)
+            return super().generate_json(system_prompt, user_prompt, schema)
+            
+    provider = UniqueProvider()
+    executor = AlwaysFailExecutor()
+    engine = Orchestrator(provider, executor, max_attempts=3)
+    
+    incident = engine.run("Fail me")
+    
+    assert incident.status == IncidentStatus.ESCALATED
+    assert incident.history[-1]["status"] == IncidentStatus.ESCALATED.value
+    assert "reason" in incident.history[-1]
+    assert "Max attempts" in incident.history[-1]["reason"]
+
+def test_escalation_records_reason_remediation_error():
+    class AlwaysFailExecutor(MockToolExecutor):
+        def execute(self, request):
+            super().execute(request)
+            if request.tool == "check_health":
+                return ToolResult(success=True, target=request.target, data={"healthy": False, "status_code": 503})
+            return ToolResult(success=True, target=request.target, data={})
+
+    provider = MockProvider()
+    executor = AlwaysFailExecutor()
+    engine = Orchestrator(provider, executor)
+    
+    events = []
+    engine.subscribe(lambda e: events.append(e))
+    
+    incident = engine.run("Fix it")
+    
+    assert incident.status == IncidentStatus.ESCALATED
+    assert incident.history[-1]["status"] == IncidentStatus.ESCALATED.value
+    assert "reason" in incident.history[-1]
+    assert "No new action available" in incident.history[-1]["reason"]
+    
+    escalation_events = [e for e in events if "-> ESCALATED" in e.message]
+    assert len(escalation_events) > 0
+    assert "No new action available" in escalation_events[0].message

@@ -54,9 +54,12 @@ class Orchestrator:
         for sub in self.subscribers:
             sm.subscribe(sub)
             
-        def sync_state():
+        def sync_state(reason: str | None = None):
             incident.status = sm.status
-            incident.history.append({"status": sm.status.value, "attempt": incident.attempt})
+            entry = {"status": sm.status.value, "attempt": incident.attempt}
+            if reason:
+                entry["reason"] = reason
+            incident.history.append(entry)
             
         def run_agent(agent, *args, **kwargs):
             self._emit(AgentEvent(
@@ -121,8 +124,9 @@ class Orchestrator:
                         context["verification_evidence"].append(msg)
                         diagnosis.diagnosis += f"\nSafety check denied {proposal.tool}: {reason}"
                         if denials >= 3:
-                            sm.transition_to(IncidentStatus.ESCALATED)
-                            sync_state()
+                            reason = f"Safety check denied {denials} times"
+                            sm.transition_to(IncidentStatus.ESCALATED, reason=reason)
+                            sync_state(reason=reason)
                             return incident
                 
                 sm.transition_to(IncidentStatus.EXECUTING)
@@ -144,12 +148,17 @@ class Orchestrator:
                     sm.transition_to(IncidentStatus.FAILED)
                     sync_state()
             
-            sm.transition_to(IncidentStatus.ESCALATED)
-            sync_state()
+            reason = f"Max attempts ({self.max_attempts}) reached without resolution"
+            sm.transition_to(IncidentStatus.ESCALATED, reason=reason)
+            sync_state(reason=reason)
             
-        except (RemediationError, AIProviderError):
+        except (RemediationError, AIProviderError) as e:
             if sm.status not in (IncidentStatus.ESCALATED, IncidentStatus.RESOLVED):
-                sm.transition_to(IncidentStatus.ESCALATED)
-                sync_state()
+                if isinstance(e, RemediationError):
+                    reason = "No new action available: all candidate actions already failed"
+                else:
+                    reason = f"{e.__class__.__name__}: execution failed"
+                sm.transition_to(IncidentStatus.ESCALATED, reason=reason)
+                sync_state(reason=reason)
                 
         return incident
